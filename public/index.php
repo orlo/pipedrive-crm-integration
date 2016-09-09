@@ -39,6 +39,25 @@ $container['twig'] = function() {
     return new Twig_Environment($loader, []);
 };
 
+$app->add(function(Request $request, Response $response, $next) {
+    $sig = $request->getQueryParam('sig', null);
+    $expires = $request->getQueryParam('expires', null);
+
+    if ($sig === null || $expires === null || $expires < time()) {
+        return $response->withStatus(401);
+    }
+
+    $params = $request->getQueryParams();
+    unset($params['sig']);
+    ksort($params);
+
+    if (hash_hmac('sha256', join(':', array_values($params)), getenv('SECRET')) !== $sig) {
+        return $response->withStatus(401);
+    }
+
+    return $next($request, $response);
+});
+
 $app->get('/iframe', function(Request $request, Response $response) use ($app) {
 
     $id = $request->getQueryParam('id', null);
@@ -110,7 +129,7 @@ $app->get('/search', function(Request $request, Response $response) use ($app) {
         ];
     }, $json['data']);
 
-    return $response->withJson($data);
+    return $response->withJson(['results' => $data]);
 });
 
 $app->run();

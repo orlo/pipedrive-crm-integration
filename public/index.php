@@ -2,6 +2,14 @@
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+use GuzzleHttp\Client;
+use GuzzleHttp\Handler\CurlHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
+use Monolog\Handler\StreamHandler;
+use Monolog\Logger;
+use Psr\Http\Message\RequestInterface;
+use Psr\Log\LoggerInterface;
 use Slim\App;
 use Slim\Http\Request;
 use Slim\Http\Response;
@@ -12,10 +20,10 @@ $container = $app->getContainer();
 
 $container['pipedrive'] = function() {
 
-    $stack = new \GuzzleHttp\HandlerStack();
-    $stack->setHandler(new \GuzzleHttp\Handler\CurlHandler());
+    $stack = new HandlerStack();
+    $stack->setHandler(new CurlHandler());
 
-    $stack->push(\GuzzleHttp\Middleware::mapRequest(function(\Psr\Http\Message\RequestInterface $request) {
+    $stack->push(Middleware::mapRequest(function(RequestInterface $request) {
         $uri = $request->getUri();
 
         $queryParams = [];
@@ -25,9 +33,9 @@ $container['pipedrive'] = function() {
         return $request->withUri($uri->withQuery(http_build_query($queryParams)));
     }));
 
-    $client = new \GuzzleHttp\Client([
+    $client = new Client([
         'base_uri' => 'https://api.pipedrive.com/v1/',
-        'timeout'  => 2.0,
+        'timeout' => 2.0,
         'handler' => $stack,
     ]);
 
@@ -37,6 +45,10 @@ $container['pipedrive'] = function() {
 $container['twig'] = function() {
     $loader = new Twig_Loader_Filesystem(__DIR__ . '/../template');
     return new Twig_Environment($loader, []);
+};
+
+$container['logger'] = function() {
+    return new Logger('app', [new StreamHandler(__DIR__ . '/../var/log.txt')]);
 };
 
 $app->add(function(Request $request, Response $response, $next) {
@@ -55,17 +67,26 @@ $app->add(function(Request $request, Response $response, $next) {
         return $response->withStatus(401);
     }
 
-    return $next($request, $response);
+    try {
+        return $next($request, $response);
+
+    } catch (\InvalidArgumentException $e) {
+        return $response->withJson(['success' => false, 'error' => $e->getMessage()], 400);
+
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'error' => $e->getMessage()], 500);
+    }
+
 });
 
 $app->get('/iframe', function(Request $request, Response $response) use ($app) {
 
     $id = $request->getQueryParam('id', null);
-    if (! isset($id) || empty($id)) {
+    if (!isset($id) || empty($id)) {
         throw new \InvalidArgumentException('Missing required param: id');
     }
 
-    /* @var $pipedrive \GuzzleHttp\Client */
+    /* @var $pipedrive Client */
     $pipedrive = $app->getContainer()->get('pipedrive');
 
     $pipedriveResponse = $pipedrive->get('persons/' . $id);
@@ -74,11 +95,11 @@ $app->get('/iframe', function(Request $request, Response $response) use ($app) {
         throw new \Exception(json_last_error_msg());
     }
 
-    if (! isset($json['success']) || $json['success'] != true) {
+    if (!isset($json['success']) || $json['success'] != true) {
         throw new \Exception('Pipe Drive response unsuccessful.');
     }
 
-    if (! isset($json['data'])) {
+    if (!isset($json['data'])) {
         throw new \Exception('Pipe Drive bad response.');
     }
 
@@ -96,11 +117,11 @@ $app->get('/iframe', function(Request $request, Response $response) use ($app) {
 $app->get('/search', function(Request $request, Response $response) use ($app) {
 
     $query = $request->getQueryParam('q', null);
-    if (! isset($query) || empty($query)) {
+    if (!isset($query) || empty($query)) {
         throw new \InvalidArgumentException('Missing required param: q');
     }
 
-    /* @var $pipedrive \GuzzleHttp\Client */
+    /* @var $pipedrive Client */
     $pipedrive = $app->getContainer()->get('pipedrive');
 
     $pipedriveResponse = $pipedrive->get('searchResults', ['query' => ['term' => $query, 'item_type' => 'person']]);
@@ -110,16 +131,16 @@ $app->get('/search', function(Request $request, Response $response) use ($app) {
         throw new \Exception(json_last_error_msg());
     }
 
-    if (! isset($json['success']) || $json['success'] != true) {
+    if (!isset($json['success']) || $json['success'] != true) {
         throw new \Exception('Pipe Drive response unsuccessful.');
     }
 
-    if (! isset($json['data'])) {
+    if (!isset($json['data'])) {
         throw new \Exception('Pipe Drive bad response.');
     }
 
-    $data = array_map(function($user) {
-        if (! isset($user['id']) || ! isset($user['title'])) {
+    $data = array_map(function ($user) {
+        if (!isset($user['id']) || !isset($user['title'])) {
             throw new \Exception('Pipe Drive bad response.');
         }
 
@@ -130,6 +151,44 @@ $app->get('/search', function(Request $request, Response $response) use ($app) {
     }, $json['data']);
 
     return $response->withJson(['results' => $data]);
+});
+
+$app->post('/webhook', function(Request $request, Response $response) use ($app) {
+
+    /* @var $logger LoggerInterface */
+    $logger = $app->getContainer()->get('logger');
+
+    $body = $request->getParsedBody();
+
+    foreach (['type', 'external_id', 'text', 'social_network', 'activity_id'] as $param) {
+        if (!isset($body[$param])) {
+            $logger->error('Got invalid message', $body);
+            throw new \InvalidArgumentException('Missing required param: ' . $param);
+        }
+    }
+
+    $logger->debug('Got message', $body);
+
+    $data = [
+        'subject' => (($body['type'] == 'incoming' ? 'Received' : 'sent') . ' message from ' . $body['social_network']),
+        'done' => 1,
+        'type' => 'social',
+        'person_id' => $body['external_id'],
+        'note' => 'Message: ' . $body['text'],
+    ];
+
+    $logger->info('Publishing update to PipeDrive', $data);
+
+    /* @var $pipedrive Client */
+    $pipedrive = $app->getContainer()->get('pipedrive');
+
+    try {
+        # $pipedrive->post('activities', ['body' => json_encode($data)]);
+    } catch (\Exception $e) {
+        $logger->error($e, $body);
+    }
+
+    return $response->withJson(['success' => true]);
 });
 
 $app->run();

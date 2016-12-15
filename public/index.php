@@ -135,8 +135,12 @@ $app->get('/search', function(Request $request, Response $response) use ($app) {
         throw new \Exception('Pipe Drive response unsuccessful.');
     }
 
-    if (!isset($json['data'])) {
+    if (!array_key_exists('data', $json)) {
         throw new \Exception('Pipe Drive bad response.');
+    }
+
+    if ($json['data'] === null) {
+        return $response->withJson(['results' => []]);
     }
 
     $data = array_map(function ($user) {

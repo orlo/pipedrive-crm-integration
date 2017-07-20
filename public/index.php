@@ -18,12 +18,12 @@ $app = new App();
 
 $container = $app->getContainer();
 
-$container['pipedrive'] = function() {
+$container['pipedrive'] = function () {
 
     $stack = new HandlerStack();
     $stack->setHandler(new CurlHandler());
 
-    $stack->push(Middleware::mapRequest(function(RequestInterface $request) {
+    $stack->push(Middleware::mapRequest(function (RequestInterface $request) {
         $uri = $request->getUri();
 
         $queryParams = [];
@@ -42,44 +42,18 @@ $container['pipedrive'] = function() {
     return $client;
 };
 
-$container['twig'] = function() {
+$container['twig'] = function () {
     $loader = new Twig_Loader_Filesystem(__DIR__ . '/../template');
     return new Twig_Environment($loader, []);
 };
 
-$container['logger'] = function() {
+$container['logger'] = function () {
     return new Logger('app', [new StreamHandler(__DIR__ . '/../var/log.txt')]);
 };
 
-$app->add(function(Request $request, Response $response, $next) {
-    $sig = $request->getQueryParam('sig', null);
-    $expires = $request->getQueryParam('expires', null);
+$app->add(new \SocialSignIn\PipeDriveIntegration\SignatureAuthentication(getenv('SECRET')));
 
-    if ($sig === null || $expires === null || $expires < time()) {
-        return $response->withStatus(401);
-    }
-
-    $params = $request->getQueryParams();
-    unset($params['sig']);
-    ksort($params);
-
-    if (hash_hmac('sha256', join(':', array_values($params)), getenv('SECRET')) !== $sig) {
-        return $response->withStatus(401);
-    }
-
-    try {
-        return $next($request, $response);
-
-    } catch (\InvalidArgumentException $e) {
-        return $response->withJson(['success' => false, 'error' => $e->getMessage()], 400);
-
-    } catch (\Exception $e) {
-        return $response->withJson(['success' => false, 'error' => $e->getMessage()], 500);
-    }
-
-});
-
-$app->get('/iframe', function(Request $request, Response $response) use ($app) {
+$app->get('/iframe', function (Request $request, Response $response) use ($app) {
 
     $id = $request->getQueryParam('id', null);
     if (!isset($id) || empty($id)) {
@@ -114,7 +88,7 @@ $app->get('/iframe', function(Request $request, Response $response) use ($app) {
     return $response;
 });
 
-$app->get('/search', function(Request $request, Response $response) use ($app) {
+$app->get('/search', function (Request $request, Response $response) use ($app) {
 
     $query = $request->getQueryParam('q', null);
     if (!isset($query) || empty($query)) {
@@ -157,12 +131,14 @@ $app->get('/search', function(Request $request, Response $response) use ($app) {
     return $response->withJson(['results' => $data]);
 });
 
-$app->post('/webhook', function(Request $request, Response $response) use ($app) {
+$app->post('/webhook', function (Request $request, Response $response) use ($app) {
 
     /* @var $logger LoggerInterface */
     $logger = $app->getContainer()->get('logger');
 
     $body = $request->getParsedBody();
+
+    $logger->error("/webhook does nothing; deprecated?", [$body]);
 
     foreach (['type', 'external_id', 'text', 'social_network', 'activity_id'] as $param) {
         if (!isset($body[$param])) {

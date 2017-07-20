@@ -1,16 +1,21 @@
 {
-    "name": "socialsignin/zendesk-crm-integration",
-    "type": "project",
-    "require": {
-        "slim/slim": "^3.5",
-        "twig/twig": "^1.24",
-        "guzzlehttp/guzzle": "^6.2",
-        "monolog/monolog": "1.21.0"
-    },
-    "authors": [
-        {
-            "name": "William Redman",
-            "email": "william.redman@socialsignin.co.uk"
-        }
-    ]
+  "name": "socialsignin/zendesk-crm-integration",
+  "type": "project",
+  "require": {
+    "slim/slim": "^3.5",
+    "twig/twig": "^1.24",
+    "guzzlehttp/guzzle": "^6.2",
+    "monolog/monolog": "1.21.0"
+  },
+  "authors": [
+    {
+      "name": "William Redman",
+      "email": "william.redman@socialsignin.co.uk"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "\\SocialSignIn\\PipeDriveIntegration\\": "src/"
+    }
+  }
 }

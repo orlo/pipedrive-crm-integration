@@ -39,3 +39,18 @@ You define this secret when adding the CRM integration within SocialSignIn. It c
 </VirtualHost>
 ```
 
+### Software Dependencies
+
+You need to have :
+
+ * A webserver (e.g. Apache 2.4)
+ * PHP 7.0+
+ * Composer ( https://getcomposer.org/composer.phar )
+
+
+Within the root of the application, run :
+
+```bash
+php composer.phar install
+```
+

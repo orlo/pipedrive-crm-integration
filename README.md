@@ -1,18 +1,37 @@
 # SocialSignIn PipeDrive CRM integration
 
-## Setup 
+Allows you to integrate your Pipedrive account with SocialSignIn.
 
- * You need to get a PipeDrive API key (from PipeDrive). This is 40 character string.  (PIPE\_DRIVE\_API\_KEY)
- * You need to have a shared secret with SocialSignIn (see below). (SECRET)
-
-The above two variables need to be added to an Apache (or similar) configuration (or hard coded into public/index.php, but this isn't ideal). An Apache example is below.
+The documentation uses 'myserver.example.com' - replace this with a valid hostname for where you are hosting this code. It's recommended you secure it with a valid SSL certificate.
 
 
-## SocialSignIn Secret 
+## SocialSignIn App Configuration
+
+Within the SocialSignIn application, head to https://app.socialsignin.net/#/settings/inbox and add a Custom CRM integration.
+
+ * Name - something of your choosing
+ * Search Endpoint URL - https://myserver.example.com/search
+ * Search Endpoint Secret - LongStringlyThingOfYourChoosing (aka SECRET)
+ * Iframe Endpoint URL - https://myserver.example.com/iframe
+ * Iframe Endpoint Secret - LongStringlyThingOfYourChoosing (aka SECRET)
+
+( For this integration, the Search and Iframe Endpoint Secrets need to be the same )
+
+### SocialSignIn Secret 
 
 When SocialSignIn make requests on your integration, the requests are signed with a shared secret (SECRET) which you can check against, to ensure a third party isn't trying to access your pipedrive data.
 
 You define this secret when adding the CRM integration within SocialSignIn. It can be a string of any length (although as with all passwords, longer is generally better).
+
+
+## PipeDrive Configuration
+
+ * You need to get a PipeDrive API key (from PipeDrive). This is 40 character string.  (aka PIPE\_DRIVE\_API\_KEY)
+
+The above two variables need to be added to an Apache (or similar) configuration (or hard coded into public/index.php, but this isn't ideal). An Apache example is below.
+
+
+# Installation
 
 ## Apache Configuration Example
  
@@ -39,7 +58,7 @@ You define this secret when adding the CRM integration within SocialSignIn. It c
 </VirtualHost>
 ```
 
-### Software Dependencies
+## Software Dependencies
 
 You need to have :
 
@@ -53,4 +72,5 @@ Within the root of the application, run :
 ```bash
 php composer.phar install
 ```
+
 

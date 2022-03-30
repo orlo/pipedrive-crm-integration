@@ -5,7 +5,7 @@
     "slim/slim": "^3.5",
     "twig/twig": "^1.24",
     "guzzlehttp/guzzle": "^6.2",
-    "monolog/monolog": "1.21.0"
+    "monolog/monolog": "^1.21.0"
   },
   "authors": [
     {

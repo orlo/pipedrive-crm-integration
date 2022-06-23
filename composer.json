@@ -2,6 +2,7 @@
   "name": "socialsignin/zendesk-crm-integration",
   "type": "project",
   "require": {
+    "php": "^7.4|^8.0",
     "slim/slim": "^3.5",
     "twig/twig": "^1.24",
     "guzzlehttp/guzzle": "^6.2",

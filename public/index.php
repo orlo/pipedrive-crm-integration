@@ -14,44 +14,49 @@ use Slim\App;
 use Slim\Http\Request;
 use Slim\Http\Response;
 
-$app = new App();
+$container_config = [
+    'pipedrive' => function () {
 
-$container = $app->getContainer();
+        $stack = new HandlerStack();
+        $stack->setHandler(new CurlHandler());
 
-$container['pipedrive'] = function () {
+        $stack->push(Middleware::mapRequest(function (RequestInterface $request) {
+            $uri = $request->getUri();
 
-    $stack = new HandlerStack();
-    $stack->setHandler(new CurlHandler());
+            $queryParams = [];
+            parse_str($uri->getQuery(), $queryParams);
+            $queryParams['api_token'] = getenv('PIPE_DRIVE_API_KEY');
 
-    $stack->push(Middleware::mapRequest(function (RequestInterface $request) {
-        $uri = $request->getUri();
+            return $request->withUri($uri->withQuery(http_build_query($queryParams)));
+        }));
 
-        $queryParams = [];
-        parse_str($uri->getQuery(), $queryParams);
-        $queryParams['api_token'] = getenv('PIPE_DRIVE_API_KEY');
+        $client = new Client([
+            'base_uri' => 'https://api.pipedrive.com/v1/',
+            'timeout' => 2.0,
+            'handler' => $stack,
+        ]);
 
-        return $request->withUri($uri->withQuery(http_build_query($queryParams)));
-    }));
+        return $client;
+    },
 
-    $client = new Client([
-        'base_uri' => 'https://api.pipedrive.com/v1/',
-        'timeout' => 2.0,
-        'handler' => $stack,
-    ]);
+    'twig' => function () {
+        $loader = new Twig_Loader_Filesystem(__DIR__ . '/../template');
+        return new Twig_Environment($loader, []);
+    },
 
-    return $client;
-};
+    'logger' => function () {
+        return new Logger('app', [new StreamHandler(__DIR__ . '/../var/log.txt')]);
+    }
+];
 
-$container['twig'] = function () {
-    $loader = new Twig_Loader_Filesystem(__DIR__ . '/../template');
-    return new Twig_Environment($loader, []);
-};
+$app = new App($container_config);
 
-$container['logger'] = function () {
-    return new Logger('app', [new StreamHandler(__DIR__ . '/../var/log.txt')]);
-};
+$secret = getenv('SECRET');
+if (!is_string($secret) || empty($secret)) {
+    throw new \InvalidArgumentException("SECRET empty or not defined");
+}
 
-$app->add(new \SocialSignIn\PipeDriveIntegration\SignatureAuthentication(getenv('SECRET')));
+$app->add(new \SocialSignIn\PipeDriveIntegration\SignatureAuthentication($secret));
 
 $app->get('/iframe', function (Request $request, Response $response) use ($app) {
 
@@ -103,6 +108,10 @@ $app->get('/search', function (Request $request, Response $response) use ($app) 
     $json = json_decode($pipedriveResponse->getBody()->getContents(), true);
     if (json_last_error_msg() != JSON_ERROR_NONE) {
         throw new \Exception(json_last_error_msg());
+    }
+
+    if (!is_array($json)) {
+        throw new \Exception("JSON parse error");
     }
 
     if (!isset($json['success']) || $json['success'] != true) {

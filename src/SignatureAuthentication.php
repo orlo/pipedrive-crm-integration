@@ -11,16 +11,16 @@ final class SignatureAuthentication
     /**
      * @var string
      */
-    private $sharedSecret;
+    private string $sharedSecret;
 
     /**
      * @param string $sharedSecret
      *
      * @throws \Exception
      */
-    public function __construct($sharedSecret)
+    public function __construct(string $sharedSecret)
     {
-        if (!is_string($sharedSecret) || empty($sharedSecret)) {
+        if (empty($sharedSecret)) {
             throw new \Exception('Expected $sharedSecret to be non-empty string.');
         }
 

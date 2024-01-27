@@ -17,7 +17,7 @@ It's entirely possible it does not work any longer.
 We hope this code can be used as a basis of an integration with Orlo, but we'd strongly suggest some extensive testing
 before putting it into production :-)
 
-## SocialSignIn App Configuration
+## Orlo App Configuration
 
 Within the Orlo application, head to https://www.orlo.app/#/settings/inbox and add a Custom CRM
 integration.
@@ -30,7 +30,7 @@ integration.
 
 ( For this integration, the Search and Iframe Endpoint Secrets need to be the same )
 
-### SocialSignIn Secret
+### Orlo Secret
 
 When Orlo makes requests on your integration, the requests are signed with a shared secret (SECRET) which you can
 check against, to ensure a third party isn't trying to access your pipedrive data.

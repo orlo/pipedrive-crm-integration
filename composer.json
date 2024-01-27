@@ -1,6 +1,14 @@
 {
   "name": "socialsignin/zendesk-crm-integration",
   "type": "project",
+   "authors": [
+        {
+            "name": "Technical",
+            "email": "technical@orlo.tech"
+        }
+    ],
+  "license": "MIT",
+  "description": "example PHP application that could be used to integrate PipeDrive with Orlo.app",
   "require": {
     "php": "^7.4|^8.0",
     "slim/slim": "^3.5",

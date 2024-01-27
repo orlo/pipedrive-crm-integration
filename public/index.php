@@ -15,7 +15,7 @@ use Slim\Http\Request;
 use Slim\Http\Response;
 
 $container_config = [
-    'pipedrive' => function () {
+    'pipedrive' => function (): Client {
 
         $stack = new HandlerStack();
         $stack->setHandler(new CurlHandler());
@@ -39,12 +39,12 @@ $container_config = [
         return $client;
     },
 
-    'twig' => function () {
+    'twig' => function (): Twig_Environment {
         $loader = new Twig_Loader_Filesystem(__DIR__ . '/../template');
         return new Twig_Environment($loader, []);
     },
 
-    'logger' => function () {
+    'logger' => function (): LoggerInterface {
         return new Logger('app', [new StreamHandler(__DIR__ . '/../var/log.txt')]);
     }
 ];
@@ -60,53 +60,73 @@ $app->add(new \SocialSignIn\PipeDriveIntegration\SignatureAuthentication($secret
 
 $app->get('/iframe', function (Request $request, Response $response) use ($app) {
 
+    /**
+     * @var numeric|null $id
+     */
     $id = $request->getQueryParam('id', null);
     if (!isset($id) || empty($id)) {
         throw new \InvalidArgumentException('Missing required param: id');
     }
 
-    /* @var $pipedrive Client */
+    /**
+     * @var Client $pipedrive
+     */
     $pipedrive = $app->getContainer()->get('pipedrive');
 
     $pipedriveResponse = $pipedrive->get('persons/' . $id);
     $json = json_decode($pipedriveResponse->getBody()->getContents(), true);
-    if (json_last_error_msg() != JSON_ERROR_NONE) {
+    if (json_last_error() !== JSON_ERROR_NONE) {
         throw new \Exception(json_last_error_msg());
     }
 
-    if (!isset($json['success']) || $json['success'] != true) {
+
+    if (!is_array($json)) {
+        throw new \InvalidArgumentException("Garbage from pipedrive?");
+    }
+    $json = new \Zakirullin\Mess\Mess($json);
+
+    if ($json['success']->findAsBool()) {
         throw new \Exception('Pipe Drive response unsuccessful.');
     }
 
-    if (!isset($json['data'])) {
+    if (!$json->offsetExists('data')) {
         throw new \Exception('Pipe Drive bad response.');
     }
 
     $user = [
-        'name' => (isset($json['data']['name']) ? $json['data']['name'] : 'unknown'),
-        'email' => (isset($json['data']['email'][0]['value']) ? $json['data']['email'][0]['value'] : 'unknown'),
-        'owner' => (isset($json['data']['owner_id']['name']) ? $json['data']['owner_id']['name'] : 'unknown'),
+        'name' => $json['data']['name']->findAsString() ?? 'unknown',
+        'email' => $json['data']['email'][0]['value']->findAsString() ?? 'unknown',
+        'owner' => $json['data']['owner_id']['name']->findAsString() ?? 'unknown',
     ];
 
-    $content = $app->getContainer()->get('twig')->render('iframe.twig', ['user' => $user]);
+    /**
+     * @var Twig_Environment $twig
+     */
+    $twig = $app->getContainer()->get('twig');
+    $content = $twig->render('iframe.twig', ['user' => $user]);
     $response->getBody()->write($content);
     return $response;
 });
 
 $app->get('/search', function (Request $request, Response $response) use ($app) {
 
+    /**
+     * @var string|null $query
+     */
     $query = $request->getQueryParam('q', null);
     if (!isset($query) || empty($query)) {
         throw new \InvalidArgumentException('Missing required param: q');
     }
 
-    /* @var $pipedrive Client */
+    /**
+     * @var Client $pipedrive
+     */
     $pipedrive = $app->getContainer()->get('pipedrive');
 
     $pipedriveResponse = $pipedrive->get('searchResults', ['query' => ['term' => $query, 'item_type' => 'person']]);
 
     $json = json_decode($pipedriveResponse->getBody()->getContents(), true);
-    if (json_last_error_msg() != JSON_ERROR_NONE) {
+    if (json_last_error() !== JSON_ERROR_NONE) {
         throw new \Exception(json_last_error_msg());
     }
 
@@ -114,19 +134,21 @@ $app->get('/search', function (Request $request, Response $response) use ($app) 
         throw new \Exception("JSON parse error");
     }
 
-    if (!isset($json['success']) || $json['success'] != true) {
+    $json = new \Zakirullin\Mess\Mess($json);
+
+    if (!$json['success']->findAsBool()) {
         throw new \Exception('Pipe Drive response unsuccessful.');
     }
 
-    if (!array_key_exists('data', $json)) {
+    if (!$json->offsetExists('data')) {
         throw new \Exception('Pipe Drive bad response.');
     }
 
-    if ($json['data'] === null) {
+    if ($json['data']->findArray() === null) {
         return $response->withJson(['results' => []]);
     }
 
-    $data = array_map(function ($user) {
+    $data = array_map(function (array $user): array {
         if (!isset($user['id']) || !isset($user['title'])) {
             throw new \Exception('Pipe Drive bad response.');
         }
@@ -135,46 +157,51 @@ $app->get('/search', function (Request $request, Response $response) use ($app) 
             'id' => $user['id'],
             'name' => $user['title'],
         ];
-    }, $json['data']);
+    }, $json['data']->getArray());
 
     return $response->withJson(['results' => $data]);
 });
 
 $app->post('/webhook', function (Request $request, Response $response) use ($app) {
 
-    /* @var $logger LoggerInterface */
+    /**
+     * @var LoggerInterface $logger
+     */
     $logger = $app->getContainer()->get('logger');
 
     $body = $request->getParsedBody();
 
-    $logger->error("/webhook does nothing; deprecated?", [$body]);
+    $logger->error("/webhook does nothing; deprecated?", ['body' => $body]);
 
     foreach (['type', 'external_id', 'text', 'social_network', 'activity_id'] as $param) {
         if (!isset($body[$param])) {
-            $logger->error('Got invalid message', $body);
+            $logger->error('Got invalid message', ['body' => $body]);
             throw new \InvalidArgumentException('Missing required param: ' . $param);
         }
     }
 
-    $logger->debug('Got message', $body);
+    $logger->debug('Got message', ['body' => $body]);
+
+    $body = new \Zakirullin\Mess\Mess($body);
 
     $data = [
-        'subject' => (($body['type'] == 'incoming' ? 'Received' : 'sent') . ' message from ' . $body['social_network']),
+        'subject' => (($body['type']->findAsString() == 'incoming') ? 'Received' : 'sent') . ' message from ' . ($body['social_network']->findAsString() ?? 'unknown'),
         'done' => 1,
         'type' => 'social',
-        'person_id' => $body['external_id'],
-        'note' => 'Message: ' . $body['text'],
+        'person_id' => $body['external_id']->findAsString() ?? 'unknown',
+        'note' => 'Message: ' . ($body['text']->findAsString() ?? 'unknown'),
     ];
 
-    $logger->info('Publishing update to PipeDrive', $data);
-
-    /* @var $pipedrive Client */
-    $pipedrive = $app->getContainer()->get('pipedrive');
+    $logger->info('Publishing update to PipeDrive', ['data' => $data]);
 
     try {
-        # $pipedrive->post('activities', ['body' => json_encode($data)]);
+        /**
+         * @var Client $pipedrive
+         */
+        // $pipedrive = $app->getContainer()->get('pipedrive');
+        // $pipedrive->post('activities', ['body' => json_encode($data)]);
     } catch (\Exception $e) {
-        $logger->error($e, $body);
+        $logger->error("Error on POST to pipedrive->activities", ['exception' => $e, 'body' => $body]);
     }
 
     return $response->withJson(['success' => true]);

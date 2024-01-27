@@ -1,0 +1,48 @@
+name: build pipedrive crm
+on: [push]
+
+
+jobs:
+  run-tests:
+    runs-on: self-hosted
+    strategy:
+      matrix:
+         php-version: ['7.4', '8.1', '8.2', '8.3']
+
+    steps:
+    - uses: actions/checkout@master
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ matrix.php-version }}
+        extensions: curl, opcache, zip
+        tools: composer
+      env:
+        runner: self-hosted
+
+    - name: Get composer cache directory
+      if: ${{ !env.ACT }}
+      id: composer-cache
+      run: echo "::set-output name=dir::$(composer config cache-files-dir)"
+
+    - name: Cache dependencies
+      if: ${{ !env.ACT }}
+      uses: actions/cache@v2
+      with:
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: ${{ runner.os }}-composer-
+
+    - name: composer validate
+      run: composer validate
+
+    - name: install libraries
+      run: composer install -n  
+
+    - name: lint check
+      run: composer lint
+
+    - name: static analysis check
+      run: composer psalm
+

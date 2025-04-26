@@ -60,11 +60,9 @@ $app->add(new \SocialSignIn\PipeDriveIntegration\SignatureAuthentication($secret
 
 $app->get('/iframe', function (Request $request, Response $response) use ($app) {
 
-    /**
-     * @var numeric|null $id
-     */
+
     $id = $request->getQueryParam('id', null);
-    if (!isset($id) || empty($id)) {
+    if (!isset($id) || empty($id) || !is_numeric($id)) {
         throw new \InvalidArgumentException('Missing required param: id');
     }
 
@@ -73,7 +71,7 @@ $app->get('/iframe', function (Request $request, Response $response) use ($app) 
      */
     $pipedrive = $app->getContainer()->get('pipedrive');
 
-    $pipedriveResponse = $pipedrive->get('persons/' . $id);
+    $pipedriveResponse = $pipedrive->get("persons/$id");
     $json = json_decode($pipedriveResponse->getBody()->getContents(), true);
     if (json_last_error() !== JSON_ERROR_NONE) {
         throw new \Exception(json_last_error_msg());
@@ -83,6 +81,7 @@ $app->get('/iframe', function (Request $request, Response $response) use ($app) 
     if (!is_array($json)) {
         throw new \InvalidArgumentException("Garbage from pipedrive?");
     }
+
     $json = new \Zakirullin\Mess\Mess($json);
 
     if ($json['success']->findAsBool()) {
@@ -93,10 +92,12 @@ $app->get('/iframe', function (Request $request, Response $response) use ($app) 
         throw new \Exception('Pipe Drive bad response.');
     }
 
+    $data = $json['data'];
+
     $user = [
-        'name' => $json['data']['name']->findAsString() ?? 'unknown',
-        'email' => $json['data']['email'][0]['value']->findAsString() ?? 'unknown',
-        'owner' => $json['data']['owner_id']['name']->findAsString() ?? 'unknown',
+        'name' => $data['name']?->findAsString() ?? 'unknown',
+        'email' => $data['email'][0]['value']?->findAsString() ?? 'unknown',
+        'owner' => $data['owner_id']['name']?->findAsString() ?? 'unknown',
     ];
 
     /**
@@ -185,11 +186,11 @@ $app->post('/webhook', function (Request $request, Response $response) use ($app
     $body = new \Zakirullin\Mess\Mess($body);
 
     $data = [
-        'subject' => (($body['type']->findAsString() == 'incoming') ? 'Received' : 'sent') . ' message from ' . ($body['social_network']->findAsString() ?? 'unknown'),
+        'subject' => (($body['type']->findAsString() == 'incoming') ? 'Received' : 'sent') . ' message from ' . ($body['social_network']?->findAsString() ?? 'unknown'),
         'done' => 1,
         'type' => 'social',
-        'person_id' => $body['external_id']->findAsString() ?? 'unknown',
-        'note' => 'Message: ' . ($body['text']->findAsString() ?? 'unknown'),
+        'person_id' => $body['external_id']?->findAsString() ?? 'unknown',
+        'note' => 'Message: ' . ($body['text']?->findAsString() ?? 'unknown'),
     ];
 
     $logger->info('Publishing update to PipeDrive', ['data' => $data]);
